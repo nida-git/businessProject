@@ -55,12 +55,6 @@ const newLimitedPartnes = [
   },
 ];
 
-const fundManager = [
-  {
-    Name: "sami",
-  },
-];
-
 const investments = [
   {
     OrganisationName: "Tata company",
@@ -116,7 +110,7 @@ date1 = new Date(
   PrevLimitedPartners[PrevLimitedPartners.length - 1].DateOfJoin,
 );
 
-console.log(limitedPartners)
+console.log(limitedPartners);
 
 newLimitedPartnes.forEach((obj) => {
   const date2 = new Date(obj.DateOfJoin);
