@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   LayoutDashboard, Users, Building2, FileBarChart,
   Settings, Landmark, Database, TrendingUp,
@@ -7,60 +7,121 @@ import {
 } from "lucide-react";
 
 export default function App() {
+  let amountToBeTaken;
   const [fundName, setFundName] = useState("");
 
   const [lpName, setLpName] = useState("");
   const [commitment, setCommitment] = useState("");
   const [joinDate, setJoinDate] = useState("");
+  const [call,setCall] = useState("")
 
-  const [companyName, setCompanyName] = useState("");
-  const [investment, setInvestment] = useState("");
+  const [companyName, setCompanyName] = useState("")
+  const [requirement, setRequirement] = useState("");
 
   const [lps, setLps] = useState([
-    { name: "ABC Capital", commitment: 50, call: 30, date: "Jan 2024", equalization: 5 },
-    { name: "XYZ Investments", commitment: 60, call: 35, date: "Mar 2024", equalization: 6 },
-    { name: "Global Partners", commitment: 40, call: 25, date: "Jun 2024", equalization: 4 },
+   
   ]);
 
-  const [companies, setCompanies] = useState([
-    { name: "TechNova Inc.", amount: 40, sector: "Technology" },
-    { name: "HealthPlus Ltd.", amount: 30, sector: "Healthcare" },
-  ]);
+  // const limitedPartners = PrevLimitedPartners.concat(newLimitedPartnes);
+
+  const totalAmount = lps.reduce(
+  (totalAmount, { commitment }) => totalAmount + commitment,
+  0,
+);
+
+
+const [companies, setCompanies] = useState([
+  { name: "TechNova Inc.", requirement: 40, sector: "Technology" },
+  { name: "HealthPlus Ltd.", requirement: 30, sector: "Healthcare" },
+]);
+
+const investorrequirement = companies.reduce(
+  (totalAmount, { requirement }) => totalAmount + requirement,
+  0,
+);
+
+const calculateLPs = (lpList) => {
+
+  const total = lpList.reduce(
+    (sum, lp) => sum + lp.commitment, 0
+  );
+
+  return lpList.map(lp => ({
+    ...lp,
+    ownership: total ? (lp.commitment / total) * 100 : 0,
+    equalization: 0,
+    call: 0,
+  }));
+};
+
+const addLP = () => {
+  if (!lpName || !commitment || !joinDate) return;
+
+  const newLP = {
+    name: lpName,
+    commitment: Number(commitment),
+    call: 0,
+    date: new Date(joinDate).toLocaleDateString("en-US", {
+      month: "short",
+      year: "numeric",
+    }),
+    equalization: 0,
+  };
+
+  setLps(prev => calculateLPs([...prev, newLP]));
+
+  setLpName("");
+  setCommitment("");
+  // setJoinDate("");
+};
+const findPercentage = () =>{
+
+  let individualPercentage;
+
+  lps.forEach((lp) => {
+  
+const num = (lp.commitment / totalAmount) * 100;
+
+const result = num.toFixed(3);
+   individualPercentage = result + "%";
+  //  console.log(individualPercentage)
+ 
+});
+ return individualPercentage
+}
+
+
+function findCapitalCall(){
+  lp.forEach(()=>{
+      amountToBeTaken =
+    (requirement * parseFloat(findPercentage())) / 100;
+  obj.call = amountToBeTaken;
+  obj.commitmentLeft = obj.commitment - obj.call;
+
+  console.log(lps)
+  })
+}
+
+
+
 
   const totalCommitment = lps.reduce((sum, lp) => sum + lp.commitment, 0);
   const totalCall = lps.reduce((sum, lp) => sum + lp.call, 0);
 
-  const addLP = () => {
-    if (!lpName || !commitment || !joinDate) return;
-
-    setLps([...lps, {
-      name: lpName,
-      commitment: Number(commitment),
-      call: 0,
-      date: new Date(joinDate).toLocaleDateString("en-US", {
-        month: "short",
-        year: "numeric",
-      }),
-      equalization: 0,
-    }]);
-
-    setLpName("");
-    setCommitment("");
-    setJoinDate("");
-  };
 
   const addCompany = () => {
-    if (!companyName || !investment) return;
+    if (!companyName || !requirement) return;
 
     setCompanies([...companies, {
       name: companyName,
-      amount: Number(investment),
+      requirement: Number(requirement),
       sector: "Other",
     }]);
-
+console.log(requirement)
     setCompanyName("");
-    setInvestment("");
+    setRequirement("");
   };
+
 
   return (
     <div className="min-h-screen flex bg-[#f7f3ec] text-[#172d27]"
@@ -207,9 +268,9 @@ export default function App() {
 
               <input
                 type="number"
-                placeholder="Investment Requirement"
-                value={investment}
-                onChange={(e) => setInvestment(e.target.value)}
+                placeholder="requirement requirement"
+                value={requirement}
+                onChange={(e) => setRequirement(e.target.value)}
                 className="input-style min-w-0 flex-1"
               />
 
@@ -249,6 +310,7 @@ export default function App() {
                     <tr>
                       <th className="table-heading">Name</th>
                       <th className="table-heading">Commitment</th>
+                      <th className="table-heading">Ownership</th>
                       <th className="table-heading">Capital Call</th>
                       <th className="table-heading">Date of Join</th>
                       <th className="table-heading">Equalization Amount</th>
@@ -260,6 +322,7 @@ export default function App() {
                       <tr key={index} className="border-b hover:bg-[#e8e0d4] border-[#e2d9cc]">
                         <td className="table-cell">{lp.name}</td>
                         <td className="table-cell">₹ {lp.commitment}</td>
+                        <td className="table-cell">{lp.ownership.toFixed(2)}%</td>
                         <td className="table-cell">₹ {lp.call}</td>
                         <td className="table-cell">{lp.date}</td>
                         <td className="table-cell">₹ {lp.equalization}M</td>
@@ -283,7 +346,7 @@ export default function App() {
                   <thead className="bg-[#193f34] text-white">
                     <tr>
                       <th className="table-heading">Company Name</th>
-                      <th className="table-heading">Investment Amount</th>
+                      <th className="table-heading">requirement Amount</th>
                       <th className="table-heading">Sector</th>
                       <th className="table-heading">Status</th>
                     </tr>
@@ -293,7 +356,7 @@ export default function App() {
                     {companies.map((company, index) => (
                       <tr key={index} className="border-b hover:bg-[#e8e0d4] border-[#e2d9cc]">
                         <td className="table-cell">{company.name}</td>
-                        <td className="table-cell">₹ {company.amount}</td>
+                        <td className="table-cell">₹ {company.requirement}</td>
                         <td className="table-cell">{company.sector}</td>
                         <td className="table-cell">
                           <span className="bg-[#d8ead4] text-[#315b3b] rounded-full px-3 py-1 text-sm">
