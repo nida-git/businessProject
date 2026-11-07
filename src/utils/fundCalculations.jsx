@@ -1,5 +1,11 @@
 const RATE = 0.1;
 
+export function calculateEqualization(capitalCall, days, rate = RATE) {
+  return Math.round(
+    (Number(capitalCall || 0) * rate * Number(days || 0)) / 365,
+  );
+}
+
 // Calculate LP values
 export function calculateLPs(lps, companies, mergedCloseDates = []) {
   if (!lps.length) return [];
@@ -87,7 +93,7 @@ export function calculateLPs(lps, companies, mergedCloseDates = []) {
     let totalEqualization = 0;
 
     currentLPs.forEach((lp) => {
-      const amount = Math.round((lp.capitalCall * RATE * days) / 365);
+      const amount = calculateEqualization(lp.capitalCall, days);
 
       // Negative means the new LP pays
       lp.equalization = -amount;
@@ -164,7 +170,7 @@ export function getNextClose(lps, companies, mergedCloseDates = []) {
   const pendingLPs = calculated
     .filter((lp) => lp.dateOfJoin === date)
     .map((lp) => {
-      const equalization = Math.round((lp.capitalCall * RATE * days) / 365);
+      const equalization = calculateEqualization(lp.capitalCall, days);
 
       return {
         ...lp,

@@ -63,6 +63,19 @@ export default function App() {
     [lps, activeCompanies, mergedCloseDates],
   );
 
+  useEffect(() => {
+    console.log("Merged Close Dates:", mergedCloseDates);
+
+    console.table(
+      calculatedLPs.map((lp) => ({
+        name: lp.name,
+        date: lp.dateOfJoin,
+        close: lp.closeNumber,
+        equalization: lp.equalization,
+      })),
+    );
+  }, [calculatedLPs, mergedCloseDates]);
+
   const nextClose = useMemo(
     () => getNextClose(lps, activeCompanies, mergedCloseDates),
     [lps, activeCompanies, mergedCloseDates],
@@ -151,10 +164,13 @@ export default function App() {
         throw new Error(result.message || "Merge failed");
       }
 
-      const mergedDates = result.mergedDates || result.data?.mergedDates || [];
+      const serverDates = result.mergedDates || result.data?.mergedDates || [];
 
-      setMergedCloseDates(mergedDates);
+      const updatedDates = serverDates.map((item) =>
+        typeof item === "string" ? item : item.date,
+      );
 
+      setMergedCloseDates([...new Set([...updatedDates, nextClose.date])]);
       setLastMergedClose({
         date: nextClose.date,
         previousDate: nextClose.previousDate,
@@ -659,11 +675,11 @@ export default function App() {
 
                         <td className="table-cell">{lp.dateOfJoin}</td>
 
-                        <td className="px-4 py-3">
+                        <td className="table-cell">
                           ₹{" "}
-                          {Math.round(lp.equalization || 0).toLocaleString(
-                            "en-IN",
-                          )}
+                          {Math.abs(lp.equalization) < 0.005
+                            ? "0.00"
+                            : lp.equalization.toFixed(2)}
                         </td>
 
                         <td className="table-cell">
