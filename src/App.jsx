@@ -1,5 +1,7 @@
 import { useState, useMemo, useEffect } from "react";
-import { calculateLPs } from "./utils/fundCalculations";
+// import { calculateLPs } from "./utils/fundCalculations";
+//
+import { calculateLPs, getNextClose } from "./utils/fundCalculations";
 import {
   Users,
   Building2,
@@ -15,8 +17,13 @@ const API_URL = "http://localhost:5000/api/lps";
 export default function App() {
   const [fundName, setFundName] = useState("");
   const [editingLP, setEditingLP] = useState(null);
+  const [newCloseDate, setNewCloseDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
 
   const [lps, setLps] = useState([]);
+  const [mergedCloseDates, setMergedCloseDates] = useState([]);
+  const [lastMergedClose, setLastMergedClose] = useState(null);
 
   const [lpName, setLpName] = useState("");
   const [commitment, setCommitment] = useState("");
@@ -47,10 +54,136 @@ export default function App() {
     [companies],
   );
 
+  // const calculatedLPs = useMemo(
+  //   () => calculateLPs(lps, activeCompanies),
+  //   [lps, activeCompanies],
+  // );
   const calculatedLPs = useMemo(
-    () => calculateLPs(lps, activeCompanies),
-    [lps, activeCompanies],
+    () => calculateLPs(lps, activeCompanies, mergedCloseDates),
+    [lps, activeCompanies, mergedCloseDates],
   );
+
+  const nextClose = useMemo(
+    () => getNextClose(lps, activeCompanies, mergedCloseDates),
+    [lps, activeCompanies, mergedCloseDates],
+  );
+
+  //  const mergeClose = async () => {
+  //   if (!nextClose) {
+  //     alert("No pending close available.");
+  //     return;
+  //   }
+
+  //   const confirmed = window.confirm(
+  //     `Merge close dated ${nextClose.date}?`
+  //   );
+
+  //   if (!confirmed) return;
+
+  //   try {
+  //     const response = await fetch(
+  //       "http://localhost:5000/api/closes/merge",
+  //       {
+  //         method: "POST",
+  //         headers: {
+  //           "Content-Type": "application/json",
+  //         },
+  //         body: JSON.stringify({ date: nextClose.date }),
+  //       }
+  //     );
+
+  //     const result = await response.json();
+
+  //     if (!response.ok) {
+  //       throw new Error(result.message || "Merge failed");
+  //     }
+
+  //     // Support either direct or nested backend responses
+  //     const mergedDates =
+  //       result.mergedDates || result.data?.mergedDates || [];
+
+  //     setMergedCloseDates(mergedDates);
+
+  //     setLastMergedClose({
+  //       date: nextClose.date,
+  //       previousDate: nextClose.previousDate,
+  //       days: nextClose.days,
+  //       totalEqualization: nextClose.totalEqualization,
+  //       lps: nextClose.lps.map((lp) => ({
+  //         ...lp,
+  //         equalization: Math.round(
+  //           (lp.capitalCall * 0.1 * nextClose.days) / 365
+  //         ),
+  //       })),
+  //     });
+
+  //     alert("Close merged successfully!");
+  //   } catch (error) {
+  //     console.error("Merge error:", error);
+  //     alert(error.message);
+  //   }
+  // };
+
+  const mergeClose = async () => {
+    if (!nextClose) {
+      alert("No pending close available.");
+      return;
+    }
+
+    const confirmed = window.confirm(`Merge close dated ${nextClose.date}?`);
+
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch("http://localhost:5000/api/closes/merge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          date: nextClose.date,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Merge failed");
+      }
+
+      const mergedDates = result.mergedDates || result.data?.mergedDates || [];
+
+      setMergedCloseDates(mergedDates);
+
+      setLastMergedClose({
+        date: nextClose.date,
+        previousDate: nextClose.previousDate,
+        days: nextClose.days,
+        totalEqualization: nextClose.totalEqualization,
+        lps: nextClose.lps,
+      });
+
+      alert("Close merged successfully!");
+    } catch (error) {
+      console.error("Merge error:", error);
+      alert(error.message);
+    }
+  };
+  const fetchCloses = async () => {
+    try {
+      const response = await fetch("http://localhost:5000/api/closes");
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error("Failed to load closes");
+      }
+
+      setMergedCloseDates(result.mergedDates || result.data?.mergedDates || []);
+    } catch (error) {
+      console.error("Error loading closes:", error);
+    }
+  };
   useEffect(() => {
     const fetchLPs = async () => {
       try {
@@ -75,6 +208,7 @@ export default function App() {
     };
 
     fetchLPs();
+    fetchCloses();
   }, []);
 
   const addLP = async () => {
@@ -109,6 +243,7 @@ export default function App() {
       };
 
       setLps((prev) => [...prev, newLP]);
+      await fetchCloses();
 
       setLpName("");
       setCommitment("");
@@ -373,6 +508,109 @@ export default function App() {
 
           {/* RIGHT SIDE TABLES */}
           <section className="space-y-4 min-w-0">
+            {/* CLOSING MANAGEMENT */}
+            <div className="border border-[#e2d9cc] rounded-2xl p-5 bg-[#faf7f1]">
+              <h2 className="text-2xl font-bold mb-5">Fund Closings</h2>
+
+              {nextClose && (
+                <>
+                  <p className="font-semibold">Next Close: {nextClose.date}</p>
+
+                  <p className="text-sm mt-2">
+                    Previous Close: {nextClose.previousDate}
+                  </p>
+
+                  <p className="text-sm mt-2">
+                    Days Between Closes: {nextClose.days}
+                  </p>
+
+                  <div className="mt-4">
+                    <h3 className="font-semibold mb-2">New LPs</h3>
+
+                    {nextClose.lps.map((lp) => (
+                      <div
+                        key={lp.id}
+                        className="flex justify-between border-b py-2"
+                      >
+                        <span>{lp.name}</span>
+                        <span>
+                          ₹{" "}
+                          {Math.round(
+                            (lp.capitalCall * 0.1 * nextClose.days) / 365,
+                          ).toLocaleString("en-IN")}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 font-semibold">
+                    Total Equalization: ₹
+                    {nextClose.totalEqualization.toLocaleString("en-IN")}
+                  </div>
+                </>
+              )}
+              <button
+                onClick={mergeClose}
+                disabled={!nextClose}
+                className="bg-green-700 text-white rounded-lg px-5 py-3 mt-5 w-full disabled:bg-gray-400 disabled:cursor-not-allowed"
+              >
+                {nextClose
+                  ? `Merge Close ${nextClose.date}`
+                  : "No Pending Closes"}
+              </button>
+
+              {!nextClose && (
+                <p className="text-sm text-gray-600 mt-3">
+                  No pending close found. Add an LP with a new closing date.
+                </p>
+              )}
+
+              {lastMergedClose && (
+                <div className="mt-5 rounded-xl border border-[#d8ead4] bg-[#edf8ee] p-4">
+                  <h3 className="text-lg font-bold mb-2">Last Merge Summary</h3>
+                  <p className="text-sm">
+                    Merged close: {lastMergedClose.date}
+                  </p>
+                  <p className="text-sm mt-1">
+                    Previous close: {lastMergedClose.previousDate}
+                  </p>
+                  <p className="font-semibold mt-2">
+                    Total equalization: ₹
+                    {lastMergedClose.totalEqualization.toLocaleString("en-IN")}
+                  </p>
+
+                  <div className="mt-3 space-y-2">
+                    {lastMergedClose.lps.map((lp) => (
+                      <div
+                        key={lp.id}
+                        className="flex justify-between border-b border-[#dfeadf] pb-1 text-sm"
+                      >
+                        <span>{lp.name}</span>
+                        <span>₹ {lp.equalization.toLocaleString("en-IN")}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* <div className="mt-4 border border-[#e2d9cc] rounded-2xl p-4 bg-[#faf7f1]">
+              <h3 className="text-xl font-bold mb-3">Create Close for LPs</h3>
+
+              <div className="flex gap-2">
+                <input
+                  type="date"
+                  value={newCloseDate}
+                  onChange={(e) => setNewCloseDate(e.target.value)}
+                  className="input-style flex-1 min-w-0"
+                />
+
+                <button onClick={createClose} className="green-button">
+                  Create New Close
+                </button>
+              </div>
+            </div> */}
+
             {/* LP TABLE */}
             <div className="border border-[#e2d9cc] rounded-2xl p-4 bg-[#faf7f1]">
               <h2 className="text-2xl font-bold flex items-center gap-3 mb-5">
@@ -392,6 +630,7 @@ export default function App() {
                       <th className="table-heading">Date of Join</th>
                       <th className="table-heading">Equalization Amount</th>
                       <th className="table-heading">Profit Distribution</th>
+                      <th className="table-heading">Close</th>
                       <th className="table-heading m-auto ">Actions</th>
                     </tr>
                   </thead>
@@ -420,13 +659,17 @@ export default function App() {
 
                         <td className="table-cell">{lp.dateOfJoin}</td>
 
-                        <td className="table-cell">
-                          ₹ {lp.equalization.toFixed(2)}
+                        <td className="px-4 py-3">
+                          ₹{" "}
+                          {Math.round(lp.equalization || 0).toLocaleString(
+                            "en-IN",
+                          )}
                         </td>
 
                         <td className="table-cell">
                           ₹ {lp.profitDistribution.toFixed(2)}
                         </td>
+                        <td className="table-cell">Close {lp.closeNumber}</td>
 
                         <td className="table-cell">
                           <button
@@ -449,7 +692,6 @@ export default function App() {
                 </table>
               </div>
             </div>
-
             {/* COMPANY TABLE */}
             <div className="border border-[#e2d9cc] rounded-2xl p-4 bg-[#faf7f1]">
               <h2 className="text-2xl font-bold flex items-center gap-3 mb-5">
@@ -465,6 +707,7 @@ export default function App() {
                       <th className="table-heading">Requirement Amount</th>
                       <th className="table-heading">Sector</th>
                       <th className="table-heading">Status</th>
+
                       <th className="table-heading">Action</th>
                     </tr>
                   </thead>
@@ -478,6 +721,7 @@ export default function App() {
                         <td className="table-cell">{company.name}</td>
                         <td className="table-cell">₹ {company.requirement}</td>
                         <td className="table-cell">{company.sector}</td>
+
                         <td className="table-cell">
                           <span
                             className={`rounded-full px-3 py-1 text-sm ${
