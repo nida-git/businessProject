@@ -1,8 +1,9 @@
-const RATE = 0.1;
+const RATE = 0.08;
 
 export function calculateEqualization(capitalCall, days, rate = RATE) {
   return Math.round(
     (Number(capitalCall || 0) * rate * Number(days || 0)) / 365,
+    
   );
 }
 

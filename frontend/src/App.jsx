@@ -1,7 +1,5 @@
-import { useState, useMemo, useEffect } from "react";
-// import { calculateLPs } from "./utils/fundCalculations";
-//
-import { calculateLPs, getNextClose } from "./utils/fundCalculations";
+﻿import { useEffect, useMemo, useState } from "react";
+import { Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import {
   Users,
   Building2,
@@ -10,42 +8,149 @@ import {
   TrendingUp,
   Handshake,
   UserRound,
+  LogOut,
 } from "lucide-react";
+import { calculateLPs, getNextClose } from "./utils/fundCalculations";
+import AuthPage from "./components/AuthPage";
+import LandingPage from "./components/LandingPage";
+import AdminDashboard from "./components/AdminDashboard";
 
-const API_URL = "http://localhost:5000/api/lps";
+const API_BASE_URL = "http://localhost:5000";
+const API_URL = `${API_BASE_URL}/api/lps`;
+const COMPANY_API_URL = `${API_BASE_URL}/api/companies`;
+
+const getStoredToken = () => localStorage.getItem("peFundToken");
 
 export default function App() {
-  const [fundName, setFundName] = useState("");
-  const [editingLP, setEditingLP] = useState(null);
-  const [newCloseDate, setNewCloseDate] = useState(
-    new Date().toISOString().slice(0, 10),
-  );
+  const [token, setToken] = useState(getStoredToken);
+  const [user, setUser] = useState(null);
+  const [authLoading, setAuthLoading] = useState(Boolean(getStoredToken()));
+  const navigate = useNavigate();
 
+  useEffect(() => {
+    if (!token) {
+      setAuthLoading(false);
+      setUser(null);
+      return;
+    }
+
+    const restoreSession = async () => {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/auth/me`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.message || "Session expired");
+        }
+
+        setUser(result.user);
+      } catch (error) {
+        console.error("Session restore failed:", error);
+        localStorage.removeItem("peFundToken");
+        setToken(null);
+        setUser(null);
+        navigate("/login");
+      } finally {
+        setAuthLoading(false);
+      }
+    };
+
+    restoreSession();
+  }, [token, navigate]);
+
+  const handleAuthSuccess = (newToken, userData) => {
+    localStorage.setItem("peFundToken", newToken);
+    setToken(newToken);
+    setUser(userData);
+    navigate(userData.role === "admin" ? "/admin" : "/dashboard");
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("peFundToken");
+    setToken(null);
+    setUser(null);
+    navigate("/");
+  };
+
+  if (authLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f7f3ec] text-[#193f34]">
+        <div className="text-xl font-semibold">Loading fund workspace...</div>
+      </div>
+    );
+  }
+
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route
+        path="/login"
+        element={
+          token ? (
+            <Navigate
+              to={user?.role === "admin" ? "/admin" : "/dashboard"}
+              replace
+            />
+          ) : (
+            <AuthPage mode="login" onAuthSuccess={handleAuthSuccess} />
+          )
+        }
+      />
+      <Route
+        path="/register"
+        element={
+          token ? (
+            <Navigate
+              to={user?.role === "admin" ? "/admin" : "/dashboard"}
+              replace
+            />
+          ) : (
+            <AuthPage mode="register" onAuthSuccess={handleAuthSuccess} />
+          )
+        }
+      />
+      <Route
+        path="/dashboard"
+        element={
+          token && user?.status === "approved" ? (
+            <Dashboard user={user} token={token} onLogout={handleLogout} />
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          token && user?.role === "admin" ? (
+            <AdminDashboard token={token} user={user} onLogout={handleLogout} />
+          ) : (
+            <Navigate to={token ? "/dashboard" : "/login"} replace />
+          )
+        }
+      />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
+
+function Dashboard({ token, user, onLogout }) {
+  const [fundName, setFundName] = useState("Private Equity Fund");
+  const [editingLP, setEditingLP] = useState(null);
   const [lps, setLps] = useState([]);
   const [mergedCloseDates, setMergedCloseDates] = useState([]);
   const [lastMergedClose, setLastMergedClose] = useState(null);
-
   const [lpName, setLpName] = useState("");
   const [commitment, setCommitment] = useState("");
-  const [joinDate, setJoinDate] = useState("");
-  const [companies, setCompanies] = useState([
-    {
-      id: "technova-inc",
-      name: "TechNova Inc.",
-      requirement: 40,
-      profit: 0,
-      sector: "Technology",
-      isActive: true,
-    },
-    {
-      id: "healthplus-ltd",
-      name: "HealthPlus Ltd.",
-      requirement: 30,
-      profit: 0,
-      sector: "Healthcare",
-      isActive: true,
-    },
-  ]);
+  const [joinDate, setJoinDate] = useState(
+    new Date().toISOString().slice(0, 10),
+  );
+  const [companies, setCompanies] = useState([]);
   const [companyName, setCompanyName] = useState("");
   const [requirement, setRequirement] = useState("");
 
@@ -54,88 +159,94 @@ export default function App() {
     [companies],
   );
 
-  // const calculatedLPs = useMemo(
-  //   () => calculateLPs(lps, activeCompanies),
-  //   [lps, activeCompanies],
-  // );
   const calculatedLPs = useMemo(
     () => calculateLPs(lps, activeCompanies, mergedCloseDates),
     [lps, activeCompanies, mergedCloseDates],
   );
-
-  useEffect(() => {
-    console.log("Merged Close Dates:", mergedCloseDates);
-
-    console.table(
-      calculatedLPs.map((lp) => ({
-        name: lp.name,
-        date: lp.dateOfJoin,
-        close: lp.closeNumber,
-        equalization: lp.equalization,
-      })),
-    );
-  }, [calculatedLPs, mergedCloseDates]);
 
   const nextClose = useMemo(
     () => getNextClose(lps, activeCompanies, mergedCloseDates),
     [lps, activeCompanies, mergedCloseDates],
   );
 
-  //  const mergeClose = async () => {
-  //   if (!nextClose) {
-  //     alert("No pending close available.");
-  //     return;
-  //   }
+  const apiFetch = async (url, options = {}) => {
+    const headers = {
+      ...(options.body ? { "Content-Type": "application/json" } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(options.headers || {}),
+    };
 
-  //   const confirmed = window.confirm(
-  //     `Merge close dated ${nextClose.date}?`
-  //   );
+    return fetch(url, { ...options, headers });
+  };
 
-  //   if (!confirmed) return;
+  const fetchCloses = async () => {
+    try {
+      const response = await apiFetch(`${API_BASE_URL}/api/closes`);
+      const result = await response.json();
 
-  //   try {
-  //     const response = await fetch(
-  //       "http://localhost:5000/api/closes/merge",
-  //       {
-  //         method: "POST",
-  //         headers: {
-  //           "Content-Type": "application/json",
-  //         },
-  //         body: JSON.stringify({ date: nextClose.date }),
-  //       }
-  //     );
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to load closes");
+      }
 
-  //     const result = await response.json();
+      setMergedCloseDates(result.mergedDates || result.data?.mergedDates || []);
+    } catch (error) {
+      console.error("Error loading closes:", error);
+    }
+  };
 
-  //     if (!response.ok) {
-  //       throw new Error(result.message || "Merge failed");
-  //     }
+  const fetchLPs = async () => {
+    try {
+      const response = await apiFetch(API_URL);
 
-  //     // Support either direct or nested backend responses
-  //     const mergedDates =
-  //       result.mergedDates || result.data?.mergedDates || [];
+      if (!response.ok) {
+        throw new Error("Failed to fetch LPs");
+      }
 
-  //     setMergedCloseDates(mergedDates);
+      const data = await response.json();
+      const mappedLps = data.map((lp) => ({
+        ...lp,
+        id: lp._id || lp.id,
+        name: lp.name,
+        commitment: Number(lp.commitment),
+        dateOfJoin: lp.dateOfJoin,
+      }));
 
-  //     setLastMergedClose({
-  //       date: nextClose.date,
-  //       previousDate: nextClose.previousDate,
-  //       days: nextClose.days,
-  //       totalEqualization: nextClose.totalEqualization,
-  //       lps: nextClose.lps.map((lp) => ({
-  //         ...lp,
-  //         equalization: Math.round(
-  //           (lp.capitalCall * 0.1 * nextClose.days) / 365
-  //         ),
-  //       })),
-  //     });
+      setLps(mappedLps);
+    } catch (error) {
+      console.error("Error loading LPs:", error);
+    }
+  };
 
-  //     alert("Close merged successfully!");
-  //   } catch (error) {
-  //     console.error("Merge error:", error);
-  //     alert(error.message);
-  //   }
-  // };
+  const fetchCompanies = async () => {
+    try {
+      const response = await apiFetch(COMPANY_API_URL);
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch companies");
+      }
+
+      const data = await response.json();
+      setCompanies(
+        data.map((company) => ({
+          ...company,
+          id: company._id || company.id,
+          isActive: company.isActive !== false,
+        })),
+      );
+    } catch (error) {
+      console.error("Error fetching companies:", error);
+    }
+  };
+
+  const fetchDashboardData = async () => {
+    await fetchLPs();
+    await fetchCloses();
+    await fetchCompanies();
+  };
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [token]);
 
   const mergeClose = async () => {
     if (!nextClose) {
@@ -144,18 +255,12 @@ export default function App() {
     }
 
     const confirmed = window.confirm(`Merge close dated ${nextClose.date}?`);
-
     if (!confirmed) return;
 
     try {
-      const response = await fetch("http://localhost:5000/api/closes/merge", {
+      const response = await apiFetch(`${API_BASE_URL}/api/closes/merge`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          date: nextClose.date,
-        }),
+        body: JSON.stringify({ date: nextClose.date }),
       });
 
       const result = await response.json();
@@ -165,7 +270,6 @@ export default function App() {
       }
 
       const serverDates = result.mergedDates || result.data?.mergedDates || [];
-
       const updatedDates = serverDates.map((item) =>
         typeof item === "string" ? item : item.date,
       );
@@ -185,47 +289,6 @@ export default function App() {
       alert(error.message);
     }
   };
-  const fetchCloses = async () => {
-    try {
-      const response = await fetch("http://localhost:5000/api/closes");
-
-      const result = await response.json();
-
-      if (!response.ok) {
-        throw new Error("Failed to load closes");
-      }
-
-      setMergedCloseDates(result.mergedDates || result.data?.mergedDates || []);
-    } catch (error) {
-      console.error("Error loading closes:", error);
-    }
-  };
-  useEffect(() => {
-    const fetchLPs = async () => {
-      try {
-        const response = await fetch(API_URL);
-        if (!response.ok) {
-          throw new Error("Failed to fetch LPs");
-        }
-
-        const data = await response.json();
-
-        const mappedLps = data.map((lp) => ({
-          id: lp._id || crypto.randomUUID(),
-          name: lp.name,
-          commitment: Number(lp.commitment),
-          dateOfJoin: lp.dateOfJoin,
-        }));
-
-        setLps(mappedLps);
-      } catch (error) {
-        console.error("Error loading LPs:", error);
-      }
-    };
-
-    fetchLPs();
-    fetchCloses();
-  }, []);
 
   const addLP = async () => {
     if (!lpName || !commitment || !joinDate) return;
@@ -237,11 +300,8 @@ export default function App() {
     };
 
     try {
-      const response = await fetch(API_URL, {
+      const response = await apiFetch(API_URL, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
         body: JSON.stringify(payload),
       });
 
@@ -251,19 +311,20 @@ export default function App() {
         throw new Error(result.message || "Failed to save LP");
       }
 
-      const newLP = {
-        id: result.data?._id || crypto.randomUUID(),
-        name: result.data?.name || lpName,
-        commitment: Number(result.data?.commitment ?? commitment),
-        dateOfJoin: result.data?.dateOfJoin || joinDate,
-      };
-
-      setLps((prev) => [...prev, newLP]);
-      await fetchCloses();
+      setLps((prev) => [
+        ...prev,
+        {
+          id: result.data?._id || result.data?.id || crypto.randomUUID(),
+          name: result.data?.name || lpName,
+          commitment: Number(result.data?.commitment ?? commitment),
+          dateOfJoin: result.data?.dateOfJoin || joinDate,
+        },
+      ]);
 
       setLpName("");
       setCommitment("");
-      setJoinDate("");
+      setJoinDate(new Date().toISOString().slice(0, 10));
+      await fetchDashboardData();
     } catch (error) {
       console.error("Error saving LP:", error);
       alert(error.message || "Unable to save LP");
@@ -271,58 +332,121 @@ export default function App() {
   };
 
   const startEditLP = (lp) => {
-    setEditingLP(lp.id);
-
+    setEditingLP(lp);
     setLpName(lp.name);
     setCommitment(String(lp.commitment));
     setJoinDate(lp.dateOfJoin);
   };
 
-  const saveLP = () => {
-    if (!lpName || !commitment || !joinDate) return;
+  const saveLP = async () => {
+    if (!editingLP) return;
 
-    setLps((prev) =>
-      prev.map((lp) =>
-        lp.id === editingLP
-          ? {
-              ...lp,
-              name: lpName,
-              commitment: Number(commitment),
-              dateOfJoin: joinDate,
-            }
-          : lp,
-      ),
+    try {
+      const id = editingLP.id || editingLP._id;
+      const response = await apiFetch(`${API_URL}/${id}`, {
+        method: "PUT",
+        body: JSON.stringify({
+          name: lpName,
+          commitment: Number(commitment),
+          dateOfJoin: joinDate,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to update LP");
+      }
+
+      const updatedLp = {
+        ...result,
+        id: result._id || id,
+        name: result.name || lpName,
+        commitment: Number(result.commitment ?? commitment),
+        dateOfJoin: result.dateOfJoin || joinDate,
+      };
+
+      setLps((prev) =>
+        prev.map((lp) => (lp.id === id || lp._id === id ? updatedLp : lp)),
+      );
+      setEditingLP(null);
+      setLpName("");
+      setCommitment("");
+      setJoinDate(new Date().toISOString().slice(0, 10));
+      await fetchDashboardData();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  };
+
+  const deleteLP = async (id) => {
+    try {
+      const response = await apiFetch(`${API_URL}/${id}`, {
+        method: "DELETE",
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to delete LP");
+      }
+
+      setLps((prev) => prev.filter((lp) => (lp.id || lp._id) !== id));
+      await fetchDashboardData();
+    } catch (error) {
+      console.error(error);
+      alert(error.message);
+    }
+  };
+
+  const totalCommitment = lps.reduce(
+    (sum, lp) => sum + Number(lp.commitment || 0),
+    0,
+  );
+  const totalCall = calculatedLPs.reduce(
+    (sum, lp) => sum + Number(lp.capitalCall || 0),
+    0,
+  );
+
+  const toggleCompanyStatus = async (companyId) => {
+    const targetCompany = companies.find(
+      (company) => company.id === companyId || company._id === companyId,
     );
 
-    setEditingLP(null);
-    setLpName("");
-    setCommitment("");
-    setJoinDate("");
+    if (!targetCompany) {
+      return;
+    }
+
+    try {
+      const response = await apiFetch(`${COMPANY_API_URL}/${companyId}`, {
+        method: "PUT",
+        body: JSON.stringify({ isActive: !targetCompany.isActive }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to update company status");
+      }
+
+      setCompanies((prev) =>
+        prev.map((company) =>
+          company.id === companyId || company._id === companyId
+            ? { ...company, isActive: !company.isActive }
+            : company,
+        ),
+      );
+    } catch (error) {
+      console.error("Error updating company status:", error);
+      alert(error.message);
+    }
   };
 
-  const deleteLP = (id) => {
-    setLps((prev) => prev.filter((lp) => lp.id !== id));
-  };
-
-  const totalCommitment = lps.reduce((sum, lp) => sum + lp.commitment, 0);
-
-  const totalCall = calculatedLPs.reduce((sum, lp) => sum + lp.capitalCall, 0);
-
-  const toggleCompanyStatus = (companyId) => {
-    setCompanies((prev) =>
-      prev.map((company) =>
-        company.id === companyId
-          ? { ...company, isActive: !company.isActive }
-          : company,
-      ),
-    );
-  };
-
-  const addCompany = () => {
+  const addCompany = async () => {
     if (!companyName || !requirement) return;
 
     const newCompany = {
-      id: crypto.randomUUID(),
       name: companyName,
       requirement: Number(requirement),
       profit: 0,
@@ -330,10 +454,30 @@ export default function App() {
       isActive: true,
     };
 
-    setCompanies((prev) => [...prev, newCompany]);
+    try {
+      const response = await apiFetch(COMPANY_API_URL, {
+        method: "POST",
+        body: JSON.stringify(newCompany),
+      });
 
-    setCompanyName("");
-    setRequirement("");
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to save company");
+      }
+
+      const createdCompany = {
+        ...result.company,
+        id: result.company?._id || result.company?.id,
+      };
+
+      setCompanies((prev) => [...prev, createdCompany]);
+      setCompanyName("");
+      setRequirement("");
+    } catch (error) {
+      console.error("Error adding company:", error);
+      alert(error.message || "Unable to add company");
+    }
   };
 
   return (
@@ -341,76 +485,44 @@ export default function App() {
       className="min-h-screen flex bg-[#f7f3ec] text-[#172d27]"
       style={{ fontFamily: "Georgia, serif" }}
     >
-      {/* SIDEBAR */}
-      {/* <aside
-        className="w-[246px] min-h-screen bg-[#193f34] text-[#f8f4eb] 
-        flex flex-col shrink-0 max-md:w-[75px]"
-      >
-        <div className="py-12 text-center">
-          <Sprout size={65} strokeWidth={1.2} className="mx-auto mb-3" />
-          <h2 className="text-2xl font-bold max-md:hidden">PE Fund</h2>
-        </div>
-
-        <nav className="px-3 space-y-2 text-lg">
-          {[
-            [LayoutDashboard, "Dashboard"],
-            [Users, "LPs"],
-            [Building2, "Companies"],
-            [FileBarChart, "Reports"],
-            [Settings, "Settings"],
-          ].map(([Icon, label], index) => (
-            <div
-              key={label}
-              className={`flex items-center gap-5 px-5 py-4 rounded-xl cursor-pointer
-              ${index === 0 ? "bg-[#f6f0e6] text-[#193f34]" : "hover:bg-[#31574c]"}`}
-            >
-              <Icon size={24} />
-              <span className="max-md:hidden">{label}</span>
-            </div>
-          ))}
-        </nav>
-
-        <div className="mt-auto opacity-30 pb-5">
-          <Sprout size={150} strokeWidth={1} />
-        </div>
-      </aside> */}
-
-      {/* MAIN CONTENT */}
       <main className="flex-1 min-w-0 p-9 max-md:p-4">
-        {/* HEADER */}
-        <header className="flex justify-between items-start mb-9">
+        <header className="flex justify-between items-start mb-9 gap-4">
           <div>
             <h1 className="text-4xl font-bold text-[#193f34] max-md:text-2xl">
-              Private Equity Fund
+              {fundName}
             </h1>
             <p className="text-xl mt-2">Track · Manage · Grow</p>
           </div>
 
-          <button className="border border-[#ddd3c5] rounded-2xl px-5 py-3 flex gap-3 items-center">
-            <UserRound size={20} /> GP
-          </button>
+          <div className="flex items-center gap-3">
+            <button className="border border-[#ddd3c5] rounded-2xl px-5 py-3 flex gap-3 items-center bg-[#f1ebe2]">
+              <UserRound size={20} /> {user?.name || "GP"}
+            </button>
+            <button
+              onClick={onLogout}
+              className="border border-[#ddd3c5] rounded-2xl px-4 py-3 flex gap-2 items-center bg-white"
+            >
+              <LogOut size={18} /> Logout
+            </button>
+          </div>
         </header>
 
-        {/* SUMMARY CARDS */}
         <section className="grid grid-cols-4 gap-5 mb-9 max-xl:grid-cols-2 max-sm:grid-cols-1">
           <SummaryCard
             icon={<Users size={52} fill="#193f34" />}
             value={lps.length}
             label="Total Limited Partners"
           />
-
           <SummaryCard
             icon={<Database size={52} fill="#193f34" />}
-            value={`₹ ${totalCommitment}`}
+            value={`₹ ${Number(totalCommitment).toLocaleString("en-IN")}`}
             label="Total Commitment"
           />
-
           <SummaryCard
             icon={<TrendingUp size={52} />}
-            value={`₹ ${totalCall}`}
+            value={`₹ ${Number(totalCall).toLocaleString("en-IN")}`}
             label="Total Capital Call"
           />
-
           <SummaryCard
             icon={<Handshake size={52} fill="#193f34" />}
             value={activeCompanies.length}
@@ -418,20 +530,13 @@ export default function App() {
           />
         </section>
 
-        {/* DASHBOARD BODY */}
-        <div
-          className="grid grid-cols-[minmax(350px,0.75fr)_minmax(0,1.4fr)] gap-4 
-          max-xl:grid-cols-1"
-        >
-          {/* LEFT SIDE FORMS */}
+        <div className="grid grid-cols-[minmax(350px,0.75fr)_minmax(0,1.4fr)] gap-4 max-xl:grid-cols-1">
           <section className="border border-[#e2d9cc] rounded-2xl p-5 bg-[#faf7f1]">
-            {/* FUND DETAILS */}
             <h2 className="text-2xl font-bold flex items-center gap-3 mb-5">
               <Landmark size={30} /> Fund Details
             </h2>
 
             <label className="block mb-2">Fund Name</label>
-
             <div className="flex gap-3">
               <input
                 value={fundName}
@@ -444,11 +549,9 @@ export default function App() {
 
             <hr className="my-7 border-[#ded5c8]" />
 
-            {/* ADD LP */}
             <h3 className="font-semibold mb-3 text-lg">
               Add Limited Partner (LP)
             </h3>
-
             <div className="flex flex-wrap gap-2">
               <input
                 placeholder="Name"
@@ -456,7 +559,6 @@ export default function App() {
                 onChange={(e) => setLpName(e.target.value)}
                 className="input-style min-w-0 flex-1"
               />
-
               <input
                 type="number"
                 placeholder="Commitment (USD M)"
@@ -464,14 +566,12 @@ export default function App() {
                 onChange={(e) => setCommitment(e.target.value)}
                 className="input-style min-w-0 flex-1"
               />
-
               <input
                 type="date"
                 value={joinDate}
                 onChange={(e) => setJoinDate(e.target.value)}
                 className="input-style min-w-0 flex-1"
               />
-
               <button
                 onClick={editingLP ? saveLP : addLP}
                 className="green-button"
@@ -482,9 +582,7 @@ export default function App() {
 
             <hr className="my-7 border-[#ded5c8]" />
 
-            {/* ADD COMPANY */}
             <h3 className="font-semibold mb-3 text-lg">Add Company</h3>
-
             <div className="flex flex-wrap gap-2">
               <input
                 placeholder="Company Name"
@@ -492,21 +590,18 @@ export default function App() {
                 onChange={(e) => setCompanyName(e.target.value)}
                 className="input-style min-w-0 flex-1"
               />
-
               <input
                 type="number"
-                placeholder="requirement requirement"
+                placeholder="Requirement"
                 value={requirement}
                 onChange={(e) => setRequirement(e.target.value)}
                 className="input-style min-w-0 flex-1"
               />
-
               <button onClick={addCompany} className="green-button">
                 Add
               </button>
             </div>
 
-            {/* DECORATIVE CHART */}
             <div className="mt-12 h-28 flex items-end justify-center gap-5 relative">
               {[20, 30, 40, 50, 65, 80, 100].map((height, i) => (
                 <div
@@ -522,27 +617,22 @@ export default function App() {
             </div>
           </section>
 
-          {/* RIGHT SIDE TABLES */}
           <section className="space-y-4 min-w-0">
-            {/* CLOSING MANAGEMENT */}
             <div className="border border-[#e2d9cc] rounded-2xl p-5 bg-[#faf7f1]">
               <h2 className="text-2xl font-bold mb-5">Fund Closings</h2>
 
               {nextClose && (
                 <>
                   <p className="font-semibold">Next Close: {nextClose.date}</p>
-
                   <p className="text-sm mt-2">
                     Previous Close: {nextClose.previousDate}
                   </p>
-
                   <p className="text-sm mt-2">
                     Days Between Closes: {nextClose.days}
                   </p>
 
                   <div className="mt-4">
                     <h3 className="font-semibold mb-2">New LPs</h3>
-
                     {nextClose.lps.map((lp) => (
                       <div
                         key={lp.id}
@@ -560,11 +650,12 @@ export default function App() {
                   </div>
 
                   <div className="mt-4 font-semibold">
-                    Total Equalization: ₹
+                    Total Equalization: ₹{" "}
                     {nextClose.totalEqualization.toLocaleString("en-IN")}
                   </div>
                 </>
               )}
+
               <button
                 onClick={mergeClose}
                 disabled={!nextClose}
@@ -591,7 +682,7 @@ export default function App() {
                     Previous close: {lastMergedClose.previousDate}
                   </p>
                   <p className="font-semibold mt-2">
-                    Total equalization: ₹
+                    Total equalization: ₹{" "}
                     {lastMergedClose.totalEqualization.toLocaleString("en-IN")}
                   </p>
 
@@ -610,24 +701,6 @@ export default function App() {
               )}
             </div>
 
-            {/* <div className="mt-4 border border-[#e2d9cc] rounded-2xl p-4 bg-[#faf7f1]">
-              <h3 className="text-xl font-bold mb-3">Create Close for LPs</h3>
-
-              <div className="flex gap-2">
-                <input
-                  type="date"
-                  value={newCloseDate}
-                  onChange={(e) => setNewCloseDate(e.target.value)}
-                  className="input-style flex-1 min-w-0"
-                />
-
-                <button onClick={createClose} className="green-button">
-                  Create New Close
-                </button>
-              </div>
-            </div> */}
-
-            {/* LP TABLE */}
             <div className="border border-[#e2d9cc] rounded-2xl p-4 bg-[#faf7f1]">
               <h2 className="text-2xl font-bold flex items-center gap-3 mb-5">
                 <Users size={30} fill="#193f34" />
@@ -647,7 +720,7 @@ export default function App() {
                       <th className="table-heading">Equalization Amount</th>
                       <th className="table-heading">Profit Distribution</th>
                       <th className="table-heading">Close</th>
-                      <th className="table-heading m-auto ">Actions</th>
+                      <th className="table-heading">Actions</th>
                     </tr>
                   </thead>
 
@@ -658,45 +731,36 @@ export default function App() {
                         className="border-b hover:bg-[#e8e0d4] border-[#e2d9cc]"
                       >
                         <td className="table-cell">{lp.name}</td>
-
                         <td className="table-cell">₹ {lp.commitment}</td>
-
                         <td className="table-cell">
                           {lp.ownership.toFixed(2)}%
                         </td>
-
                         <td className="table-cell">
                           ₹ {lp.capitalCall.toFixed(2)}
                         </td>
-
                         <td className="table-cell">
                           ₹ {lp.commitmentLeft.toFixed(2)}
                         </td>
-
                         <td className="table-cell">{lp.dateOfJoin}</td>
-
                         <td className="table-cell">
                           ₹{" "}
                           {Math.abs(lp.equalization) < 0.005
                             ? "0.00"
                             : lp.equalization.toFixed(2)}
                         </td>
-
                         <td className="table-cell">
                           ₹ {lp.profitDistribution.toFixed(2)}
                         </td>
                         <td className="table-cell">Close {lp.closeNumber}</td>
-
                         <td className="table-cell">
                           <button
-                            className="bg-blue-200 rounded p-2 m-2 "
+                            className="bg-blue-200 rounded p-2 m-2"
                             onClick={() => startEditLP(lp)}
                           >
                             Edit
                           </button>
-
                           <button
-                            className="bg-red-200 rounded p-2 m-2 "
+                            className="bg-red-200 rounded p-2 m-2"
                             onClick={() => deleteLP(lp.id)}
                           >
                             Delete
@@ -708,7 +772,7 @@ export default function App() {
                 </table>
               </div>
             </div>
-            {/* COMPANY TABLE */}
+
             <div className="border border-[#e2d9cc] rounded-2xl p-4 bg-[#faf7f1]">
               <h2 className="text-2xl font-bold flex items-center gap-3 mb-5">
                 <Building2 size={30} />
@@ -723,7 +787,6 @@ export default function App() {
                       <th className="table-heading">Requirement Amount</th>
                       <th className="table-heading">Sector</th>
                       <th className="table-heading">Status</th>
-
                       <th className="table-heading">Action</th>
                     </tr>
                   </thead>
@@ -737,7 +800,6 @@ export default function App() {
                         <td className="table-cell">{company.name}</td>
                         <td className="table-cell">₹ {company.requirement}</td>
                         <td className="table-cell">{company.sector}</td>
-
                         <td className="table-cell">
                           <span
                             className={`rounded-full px-3 py-1 text-sm ${
@@ -776,10 +838,7 @@ export default function App() {
 
 function SummaryCard({ icon, value, label }) {
   return (
-    <div
-      className="bg-[#f1ebe2] hover:bg-[#e8e0d4] border border-[#e3d9cc] rounded-2xl p-6
-      flex items-center gap-6 min-h-[124px]"
-    >
+    <div className="bg-[#f1ebe2] hover:bg-[#e8e0d4] border border-[#e3d9cc] rounded-2xl p-6 flex items-center gap-6 min-h-[124px]">
       <div className="text-[#193f34] shrink-0">{icon}</div>
       <div>
         <h2 className="text-3xl font-bold">{value}</h2>
