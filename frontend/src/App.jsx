@@ -42,6 +42,8 @@ export default function App() {
           },
         });
 
+        console.log(token);
+
         const result = await response.json();
 
         if (!response.ok) {
@@ -52,7 +54,7 @@ export default function App() {
       } catch (error) {
         console.error("Session restore failed:", error);
         localStorage.removeItem("peFundToken");
-        setToken(null);
+        // setToken(null);
         setUser(null);
         navigate("/login");
       } finally {
@@ -68,9 +70,25 @@ export default function App() {
     setToken(newToken);
     setUser(userData);
     navigate(userData.role === "admin" ? "/admin" : "/dashboard");
+    console.log(newToken);
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    const currentToken = localStorage.getItem("peFundToken");
+
+    if (currentToken) {
+      try {
+        await fetch(`${API_BASE_URL}/api/auth/logout`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${currentToken}`,
+          },
+        });
+      } catch (error) {
+        console.error("Logout sync failed:", error);
+      }
+    }
+
     localStorage.removeItem("peFundToken");
     setToken(null);
     setUser(null);

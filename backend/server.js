@@ -11,7 +11,14 @@ const app = express();
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || "pe-fund-dev-secret";
 
-app.use(cors());
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "http://127.0.0.1:5173"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true,
+  }),
+);
 app.use(express.json());
 
 const normalizeEmail = (email = "") => email.trim().toLowerCase();
@@ -44,6 +51,10 @@ const userSchema = new mongoose.Schema(
       type: String,
       enum: ["pending", "approved", "blocked"],
       default: "pending",
+    },
+    token: {
+      type: String,
+      default: null,
     },
   },
   { timestamps: true },
@@ -223,6 +234,8 @@ const signToken = (user) =>
     { expiresIn: "7d" },
   );
 
+console.log(signToken);
+
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -233,10 +246,14 @@ const protect = async (req, res, next) => {
   try {
     const token = authHeader.split(" ")[1];
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await User.findById(decoded.id).select("-password");
+    const user = await User.findById(decoded.id);
 
     if (!user) {
       return res.status(401).json({ message: "User not found." });
+    }
+
+    if (!user.token || user.token !== token) {
+      return res.status(401).json({ message: "Invalid or expired token." });
     }
 
     if (user.status === "pending") {
@@ -404,6 +421,8 @@ app.post("/api/auth/login", async (req, res) => {
     }
 
     const token = signToken(user);
+    user.token = token;
+    await user.save();
 
     res.status(200).json({
       message: "Login successful.",
@@ -431,6 +450,17 @@ app.get("/api/auth/me", protect, async (req, res) => {
       status: req.user.status,
     },
   });
+});
+
+app.post("/api/auth/logout", protect, async (req, res) => {
+  try {
+    req.user.token = null;
+    await req.user.save();
+
+    res.status(200).json({ message: "Logout successful." });
+  } catch (error) {
+    res.status(500).json({ message: "Failed to log out." });
+  }
 });
 
 app.get("/api/admin/users", protect, requireAdmin, async (req, res) => {

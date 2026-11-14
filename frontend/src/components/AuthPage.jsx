@@ -59,6 +59,7 @@ export default function AuthPage({ mode, onAuthSuccess }) {
         });
         return;
       }
+      
 
       onAuthSuccess(result.token, result.user);
     } catch (submitError) {

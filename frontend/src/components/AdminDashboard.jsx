@@ -57,6 +57,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
           body: JSON.stringify({ status: nextStatus }),
         },
       );
+      console.log("button is clicked");
 
       const result = await response.json();
 
@@ -153,6 +154,7 @@ export default function AdminDashboard({ token, user, onLogout }) {
                           onClick={() => updateStatus(row._id, "approved")}
                           className="rounded-lg bg-[#193f34] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#264d42]"
                         >
+                          {console.log(row._id)}
                           Approve
                         </button>
                       )}
