@@ -341,7 +341,7 @@ function Dashboard({ token, user, onLogout }) {
 
       setLpName("");
       setCommitment("");
-      setJoinDate(new Date().toISOString().slice(0, 10));
+      // setJoinDate(new Date().toISOString().slice(0, 10));
       await fetchDashboardData();
     } catch (error) {
       console.error("Error saving LP:", error);

@@ -234,8 +234,6 @@ const signToken = (user) =>
     { expiresIn: "7d" },
   );
 
-console.log(signToken);
-
 const protect = async (req, res, next) => {
   const authHeader = req.headers.authorization;
 
@@ -288,41 +286,43 @@ const requireAdmin = (req, res, next) => {
 
 const syncUserCloseState = async (userId) => {
   const lps = await Lp.find({ user: userId }).select("dateOfJoin");
+
   const dates = [
     ...new Set(lps.map((lp) => lp.dateOfJoin).filter(Boolean)),
   ].sort((a, b) => new Date(a) - new Date(b));
 
-  const existingCloses = await Close.find({ user: userId }).sort({ date: 1 });
+  const existingCloses = await Close.find({ user: userId });
   const existingMap = new Map(
     existingCloses.map((close) => [close.date, close]),
   );
 
   for (let i = 0; i < dates.length; i += 1) {
     const date = dates[i];
-    const closeDoc = existingMap.get(date) || new Close({ date, user: userId });
-    closeDoc.user = userId;
-    closeDoc.date = date;
-    closeDoc.merged = i === 0;
-    await closeDoc.save();
-    existingMap.set(date, closeDoc);
+
+    // Leave existing Close records—including merged state—unchanged.
+    if (!existingMap.has(date)) {
+      await Close.create({
+        user: userId,
+        date,
+        // Only the very first Close ever created begins as merged.
+        merged: existingCloses.length === 0 && i === 0,
+      });
+    }
   }
 
-  const staleDates = existingCloses
+  const staleIds = existingCloses
     .filter((close) => !dates.includes(close.date))
     .map((close) => close._id);
 
-  if (staleDates.length > 0) {
-    await Close.deleteMany({ _id: { $in: staleDates } });
+  if (staleIds.length) {
+    await Close.deleteMany({ _id: { $in: staleIds } });
   }
 
-  const closes = await Close.find({ user: userId }).sort({ date: 1 });
+  return Close.find({ user: userId }).sort({ date: 1 });
+};
 
-  if (closes.length > 0 && !closes[0].merged) {
-    closes[0].merged = true;
-    await closes[0].save();
-  }
-
-  return closes;
+const getUserCloses = async (userId) => {
+  return Close.find({ user: userId }).sort({ date: 1 });
 };
 
 app.get("/", (req, res) => {
@@ -598,7 +598,7 @@ app.post("/api/funds", protect, async (req, res) => {
 
 app.get("/api/closes", protect, async (req, res) => {
   try {
-    const closes = await syncUserCloseState(req.user._id);
+    const closes = await getUserCloses(req.user._id);
 
     res.json({
       data: {
@@ -623,7 +623,7 @@ app.post("/api/closes/merge", protect, async (req, res) => {
     if (!date) {
       return res.status(400).json({ message: "Close date is required." });
     }
-
+    console.log("running1");
     const closes = await syncUserCloseState(req.user._id);
     const nextClose = closes.find((close, index) => index > 0 && !close.merged);
 
@@ -635,6 +635,7 @@ app.post("/api/closes/merge", protect, async (req, res) => {
 
     nextClose.merged = true;
     await nextClose.save();
+    console.log("running");
 
     const updatedCloses = await Close.find({ user: req.user._id }).sort({
       date: 1,
